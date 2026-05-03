@@ -1,22 +1,25 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
 
 import { TaskListClient } from "@/components/task-list-client";
-import { getSession } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { tasks } from "@/lib/db/schema";
+
+import { getSessionUserId, getUserTasks } from "./_data";
 
 /**
  * Task list page (`/`).
  *
- * Server Component. Reads the session cookie via `cookies()` from
- * `next/headers` and, if absent or invalid, calls `redirect('/login')`
- * from `next/navigation`. Otherwise queries the user's tasks directly
- * via Drizzle (no internal HTTP roundtrip — the GET /api/tasks route
- * uses the same schema, but calling the DB here is cheaper and avoids
- * needing to forward cookies to ourselves) and passes the resulting
- * list down to the `<TaskListClient>` wrapper component.
+ * Server Component. Resolves the current session via `getSessionUserId()`
+ * (which reads the `session` cookie via `cookies()` from `next/headers`
+ * and verifies it through the shared `getSession` helper) and, if the
+ * user is unauthenticated, calls `redirect('/login')` from
+ * `next/navigation`. Otherwise it hydrates the initial render by calling
+ * `getUserTasks(userId)` — the server-side equivalent of GET
+ * `/api/tasks` — and passes the resulting list down to
+ * `<TaskListClient>` as `initialTasks`.
+ *
+ * Server-side hydration eliminates the flash-of-empty-list on first
+ * load and proves persistence: after logout and re-login the very first
+ * HTML response already contains the user's previously saved tasks, so
+ * there is no client-side fetch shimmer.
  *
  * `<TaskListClient>` owns the in-page task state and composes
  * `<AddTaskForm>` and `<TaskList>` together so newly created tasks can
@@ -46,38 +49,15 @@ import { tasks } from "@/lib/db/schema";
 // Disable static rendering — this page is per-user and depends on cookies.
 export const dynamic = "force-dynamic";
 
-async function getTasksForCurrentUser() {
-  // Per task spec: read the session cookie via `cookies()` from
-  // `next/headers`. `getSession` accepts a `Request`, so synthesize a
-  // minimal one whose `Cookie` header is rebuilt from the
-  // ReadonlyRequestCookies store.
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore
-    .getAll()
-    .map(({ name, value }) => `${name}=${value}`)
-    .join("; ");
-
-  const fakeRequest = new Request("http://internal/", {
-    headers: cookieHeader ? { cookie: cookieHeader } : {},
-  });
-
-  const session = await getSession(fakeRequest);
-  if (!session) {
-    // `redirect()` throws a special error to short-circuit rendering.
+export default async function TasksHomePage() {
+  const userId = await getSessionUserId();
+  if (!userId) {
+    // `redirect()` throws a special error to short-circuit rendering, so
+    // anything below this guard is only reached for authenticated users.
     redirect("/login");
   }
 
-  const rows = await db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.userId, session.userId))
-    .orderBy(asc(tasks.createdAt));
-
-  return rows;
-}
-
-export default async function TasksHomePage() {
-  const initialTasks = await getTasksForCurrentUser();
+  const initialTasks = await getUserTasks(userId);
 
   return (
     <section className="mx-auto flex min-h-full w-full max-w-xl flex-col gap-6">
