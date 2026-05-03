@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { asc, eq } from "drizzle-orm";
 
-import { AddTaskForm } from "@/components/add-task-form";
 import { TaskList } from "@/components/task-list";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -18,8 +17,10 @@ import { tasks } from "@/lib/db/schema";
  * cheaper and avoids needing to forward cookies to ourselves) and passes
  * the resulting list down to the client `<TaskList>` component.
  *
- * `<AddTaskForm>` and `<TaskList>` are placeholder components today; the
- * full create/toggle/delete wiring lands in follow-up tasks.
+ * `<TaskList>` owns the in-page task state and renders `<AddTaskForm>`
+ * itself so newly created tasks can be appended without a page reload.
+ * The toggle-completed and delete interactions on each row are still
+ * placeholders — they ship in their own follow-up stories.
  */
 
 // Disable static rendering — this page is per-user and depends on cookies.
@@ -60,8 +61,6 @@ export default async function TasksHomePage() {
           Stay on top of what you need to get done.
         </p>
       </header>
-
-      <AddTaskForm />
 
       <TaskList initialTasks={initialTasks} />
     </section>
