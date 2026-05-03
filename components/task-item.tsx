@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Trash2 } from "lucide-react";
 
+import { TaskCheckbox } from "@/components/task-checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/lib/db/schema";
@@ -10,26 +11,25 @@ import type { Task } from "@/lib/db/schema";
 /**
  * TaskItem
  *
- * Renders a single task row: a checkbox showing the completion state, the
+ * Renders a single task row: the optimistic-toggle <TaskCheckbox>, the
  * task title (struck-through when completed), and a trailing trash-icon
  * delete button.
  *
- * The interactive handlers for the checkbox and delete button are
- * intentionally placeholders for this story — they will be wired up in
- * the dedicated "Mark Complete" and "Delete Task" stories. The markup is
- * shipped now so that the surrounding list/state plumbing can be built
- * and reviewed independently.
+ * The checkbox's optimistic-toggle round-trip with the server is owned
+ * entirely by <TaskCheckbox>. We mirror the displayed `completed` value
+ * here via its `onCompletedChange` callback so the title's
+ * `line-through` styling stays in sync — including after a revert on
+ * failure.
+ *
+ * The delete button is intentionally a placeholder for this story — it
+ * will be wired up in the dedicated "Delete Task" story.
  */
 export type TaskItemProps = {
   task: Task;
 };
 
 export function TaskItem({ task }: TaskItemProps) {
-  // TODO(mark-complete-story): wire this checkbox up to PATCH /api/tasks/:id
-  // toggling `completed`, with optimistic update via the parent TaskList.
-  function handleToggle(_event: React.ChangeEvent<HTMLInputElement>) {
-    // Intentionally empty placeholder — see TODO above.
-  }
+  const [completed, setCompleted] = React.useState<boolean>(task.completed);
 
   // TODO(delete-task-story): wire this button up to DELETE /api/tasks/:id
   // and remove the task from TaskList state on success.
@@ -37,7 +37,7 @@ export function TaskItem({ task }: TaskItemProps) {
     // Intentionally empty placeholder — see TODO above.
   }
 
-  const checkboxId = `task-${task.id}-completed`;
+  const labelId = `task-${task.id}-completed`;
 
   return (
     <li
@@ -45,26 +45,21 @@ export function TaskItem({ task }: TaskItemProps) {
       data-testid="task-item"
       data-task-id={task.id}
     >
-      <input
-        id={checkboxId}
-        type="checkbox"
-        checked={task.completed}
-        onChange={handleToggle}
-        // `readOnly` would suppress React's controlled-without-handler warning,
-        // but we want a real onChange in place for the follow-up story to
-        // hook into without restructuring this component.
-        className="h-4 w-4 cursor-pointer rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label={
-          task.completed
+      <TaskCheckbox
+        taskId={task.id}
+        initialCompleted={task.completed}
+        onCompletedChange={setCompleted}
+        ariaLabel={
+          completed
             ? `Mark "${task.title}" as not completed`
             : `Mark "${task.title}" as completed`
         }
       />
       <label
-        htmlFor={checkboxId}
+        htmlFor={labelId}
         className={cn(
           "flex-1 cursor-pointer select-none break-words",
-          task.completed && "text-muted-foreground line-through",
+          completed && "text-muted-foreground line-through",
         )}
       >
         {task.title}
