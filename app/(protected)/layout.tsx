@@ -22,7 +22,7 @@ export default function ProtectedLayout({
       <header className="border-b">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link
-            href="/tasks"
+            href="/"
             className="text-lg font-semibold tracking-tight hover:opacity-80"
           >
             Todo App

@@ -65,7 +65,7 @@ export default function RegisterPage() {
       });
 
       if (response.status === 201) {
-        router.push("/tasks");
+        router.push("/");
         return;
       }
 
