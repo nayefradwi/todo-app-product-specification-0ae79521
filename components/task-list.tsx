@@ -31,19 +31,19 @@ export function TaskList({ initialTasks }: TaskListProps) {
   const [tasks, setTasks] = React.useState<Task[]>(initialTasks);
 
   /**
-   * Append a freshly-created task to the end of the visible list. The
-   * actual POST /api/tasks call is performed inside `<AddTaskForm>` in a
-   * follow-up story; for now we accept a `Task`-shaped object and simply
-   * push it into local state. New tasks always land at the bottom to
-   * mirror the server-side `ORDER BY created_at ASC` ordering.
+   * Append a freshly-created task to the end of the visible list.
+   * `<AddTaskForm>` performs the POST /api/tasks round-trip itself and
+   * hands the server-returned task into this callback. New tasks always
+   * land at the bottom to mirror the server-side `ORDER BY created_at
+   * ASC` ordering.
    */
-  const handleAddTask = React.useCallback((task: Task) => {
+  const handleTaskAdded = React.useCallback((task: Task) => {
     setTasks((prev) => [...prev, task]);
   }, []);
 
   return (
     <div className="flex flex-col gap-4" data-testid="task-list-root">
-      <AddTaskForm onAddTask={handleAddTask} />
+      <AddTaskForm onTaskAdded={handleTaskAdded} />
 
       {tasks.length === 0 ? (
         <div

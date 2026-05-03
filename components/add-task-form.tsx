@@ -4,67 +4,119 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { Task } from "@/lib/db/schema";
 
 /**
  * AddTaskForm
  *
- * Controlled form for creating a new task. The actual POST /api/tasks
- * round-trip ships in a dedicated follow-up story; for the purposes of
- * the "Build TaskList and TaskItem components" story, submitting the
- * form synthesizes a client-side `Task`-shaped object and hands it to
- * the parent `<TaskList>` via `onAddTask` so the new row appears at the
- * bottom of the list immediately, without a full page reload.
+ * Client Component that POSTs a new task to `/api/tasks` and hands the
+ * resulting server-created `Task` back to the parent (`<TaskList>`) via
+ * the `onTaskAdded` callback so the row can be appended to the list
+ * without a full page reload.
  *
- * When the API wiring lands, this component will swap the local task
- * synthesis for a `fetch("/api/tasks", { method: "POST" })` call and
- * pass the server-returned task into `onAddTask` instead.
+ * Behavior:
+ *   - Submitting either by clicking the Add button or pressing Enter in
+ *     the input triggers the same handler.
+ *   - The trimmed title must be non-empty; empty submissions are ignored
+ *     client-side without hitting the network.
+ *   - While the request is in flight, the input and button are disabled
+ *     and the button label flips to "Adding…".
+ *   - On 201 the input is cleared and `onTaskAdded(task)` is fired.
+ *   - On any non-2xx response (or network failure) an inline error
+ *     message is rendered below the form and the input is preserved so
+ *     the user can retry without retyping.
  */
 export type AddTaskFormProps = {
-  /** Called with a freshly-created task after a successful submit. */
-  onAddTask: (task: Task) => void;
+  /** Called with the freshly-created task after a successful POST. */
+  onTaskAdded: (task: Task) => void;
 };
 
-export function AddTaskForm({ onAddTask }: AddTaskFormProps) {
-  const [title, setTitle] = React.useState("");
+type ApiErrorPayload = {
+  error?: string;
+  message?: string;
+};
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+export function AddTaskForm({ onTaskAdded }: AddTaskFormProps) {
+  const [title, setTitle] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting) {
+      return;
+    }
+
     const trimmed = title.trim();
     if (trimmed.length === 0) {
       return;
     }
 
-    // Local-only task synthesis. Replaced by a POST /api/tasks call in a
-    // follow-up story — the shape returned to `onAddTask` will be the
-    // same, so TaskList does not need to change.
-    const newTask: Task = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `local-${Date.now()}`,
-      // `userId` is unknown on the client; the server will populate it
-      // once the API wiring lands. Empty string keeps the type honest
-      // without leaking a misleading id.
-      userId: "",
-      title: trimmed,
-      completed: false,
-      createdAt: new Date(),
-    };
+    setSubmitting(true);
+    setError(null);
 
-    onAddTask(newTask);
-    setTitle("");
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+
+      if (response.status !== 201) {
+        // Try to surface a human-readable message from the API; fall back
+        // to a generic one so we never render an empty error.
+        let message = "Could not add task. Please try again.";
+        try {
+          const payload = (await response.json()) as ApiErrorPayload;
+          if (payload && typeof payload === "object") {
+            if (typeof payload.error === "string" && payload.error.length > 0) {
+              message = payload.error;
+            } else if (
+              typeof payload.message === "string" &&
+              payload.message.length > 0
+            ) {
+              message = payload.message;
+            }
+          }
+        } catch {
+          // Body wasn't JSON — keep the fallback message.
+        }
+        setError(message);
+        return;
+      }
+
+      const created = (await response.json()) as Omit<Task, "createdAt"> & {
+        createdAt: string | Date;
+      };
+      // The server returns `createdAt` as an ISO string over JSON; rehydrate
+      // it into a Date so the shape matches `Task` for downstream consumers
+      // (e.g. anything that formats the timestamp).
+      const newTask: Task = {
+        ...created,
+        createdAt:
+          created.createdAt instanceof Date
+            ? created.createdAt
+            : new Date(created.createdAt),
+      };
+
+      onTaskAdded(newTask);
+      setTitle("");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
+  const trimmedEmpty = title.trim().length === 0;
+
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-2 sm:flex-row sm:items-end"
-      aria-label="Add a new task"
-    >
-      <div className="flex-1 space-y-1">
-        <Label htmlFor="new-task-title">New task</Label>
+    <div className="space-y-2">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-row items-center gap-2"
+        aria-label="Add a new task"
+      >
         <Input
           id="new-task-title"
           name="title"
@@ -73,12 +125,25 @@ export function AddTaskForm({ onAddTask }: AddTaskFormProps) {
           autoComplete="off"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
+          disabled={submitting}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "add-task-error" : undefined}
+          className="flex-1"
         />
-      </div>
-      <Button type="submit" disabled={title.trim().length === 0}>
-        Add
-      </Button>
-    </form>
+        <Button type="submit" disabled={submitting || trimmedEmpty}>
+          {submitting ? "Adding…" : "Add"}
+        </Button>
+      </form>
+      {error ? (
+        <p
+          id="add-task-error"
+          role="alert"
+          className="text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
