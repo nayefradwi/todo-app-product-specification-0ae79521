@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { TaskCheckbox } from "@/components/task-checkbox";
 import { Button } from "@/components/ui/button";
@@ -24,20 +25,79 @@ import type { Task } from "@/lib/db/schema";
  * after a revert on failure. Persisted state on a page refresh is
  * sourced from the server-rendered `task.completed` prop.
  *
- * The delete button is intentionally a placeholder for this story — it
- * will be wired up in the dedicated "Delete Task" story.
+ * The delete button fires `DELETE /api/tasks/:id` and, on a 204
+ * response, calls the parent-provided `onDelete(id)` callback so the
+ * row can be removed from the list state. On any non-204 / network
+ * failure we show a sonner toast and leave the row in place so the
+ * user can retry. The button is hidden by default on `md+` viewports
+ * and revealed on hover/focus of the row (the `group` class on the
+ * `<li>` drives that), and stays always-visible on small screens
+ * where there is no hover affordance.
  */
 export type TaskItemProps = {
   task: Task;
+  /**
+   * Called with the task's `id` after a successful DELETE so the parent
+   * can remove the row from its local list state. Optional — if omitted
+   * the row simply stays put after a successful delete (useful for
+   * isolated/storybook rendering).
+   */
+  onDelete?: (id: string) => void;
 };
 
-export function TaskItem({ task }: TaskItemProps) {
-  const [completed, setCompleted] = React.useState<boolean>(task.completed);
+type ApiErrorPayload = {
+  error?: string;
+  message?: string;
+};
 
-  // TODO(delete-task-story): wire this button up to DELETE /api/tasks/:id
-  // and remove the task from TaskList state on success.
-  function handleDelete() {
-    // Intentionally empty placeholder — see TODO above.
+export function TaskItem({ task, onDelete }: TaskItemProps) {
+  const [completed, setCompleted] = React.useState<boolean>(task.completed);
+  const [deleting, setDeleting] = React.useState<boolean>(false);
+
+  async function handleDelete() {
+    if (deleting) {
+      return;
+    }
+    setDeleting(true);
+
+    try {
+      const response = await fetch(
+        `/api/tasks/${encodeURIComponent(task.id)}`,
+        { method: "DELETE" },
+      );
+
+      if (response.status === 204) {
+        // Notify parent so the row is removed from list state. We do this
+        // before clearing `deleting` because `onDelete` will typically
+        // unmount this component, after which a `setState` would warn.
+        onDelete?.(task.id);
+        return;
+      }
+
+      // Non-204 — try to surface a server-provided message; fall back to
+      // a generic one so we never show an empty toast.
+      let message = "Could not delete task. Please try again.";
+      try {
+        const payload = (await response.json()) as ApiErrorPayload;
+        if (payload && typeof payload === "object") {
+          if (typeof payload.error === "string" && payload.error.length > 0) {
+            message = payload.error;
+          } else if (
+            typeof payload.message === "string" &&
+            payload.message.length > 0
+          ) {
+            message = payload.message;
+          }
+        }
+      } catch {
+        // Body wasn't JSON — keep the fallback message.
+      }
+      toast.error(message);
+      setDeleting(false);
+    } catch {
+      toast.error("Network error. Please try again.");
+      setDeleting(false);
+    }
   }
 
   const labelId = `task-${task.id}-completed`;
@@ -45,8 +105,9 @@ export function TaskItem({ task }: TaskItemProps) {
   return (
     <li
       className={cn(
-        "flex items-center gap-3 px-4 py-3 text-sm transition-opacity",
+        "group flex items-center gap-3 px-4 py-3 text-sm transition-opacity",
         completed && "opacity-70",
+        deleting && "opacity-50",
       )}
       data-testid="task-item"
       data-task-id={task.id}
@@ -76,8 +137,15 @@ export function TaskItem({ task }: TaskItemProps) {
         variant="ghost"
         size="icon"
         onClick={handleDelete}
-        aria-label={`Delete task "${task.title}"`}
-        className="shrink-0 text-muted-foreground hover:text-destructive"
+        disabled={deleting}
+        aria-label="Delete task"
+        data-testid="delete-task-button"
+        className={cn(
+          "shrink-0 text-muted-foreground transition-opacity hover:text-destructive",
+          // Always visible on mobile (no hover affordance), revealed on
+          // hover / keyboard focus on md+ screens.
+          "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:group-focus-within:opacity-100",
+        )}
       >
         <Trash2 aria-hidden="true" />
       </Button>

@@ -23,10 +23,12 @@ import type { Task } from "@/lib/db/schema";
  * reload. New tasks are appended at the bottom to mirror the server-side
  * `ORDER BY created_at ASC` ordering.
  *
- * Toggle-completed and delete interactions are intentionally out of
- * scope for this story — they will be wired up in their own follow-up
- * stories and will hook into the same `setTasks` reducer pattern used
- * here for the add path.
+ * The toggle-completed flow is owned end-to-end by `<TaskCheckbox>`
+ * inside each row (it speaks to PATCH /api/tasks/{id} directly with an
+ * optimistic UI), so no callback is needed here for that path. The
+ * delete flow does need to flow back up: each `<TaskItem>` calls
+ * `onDelete(id)` after a successful DELETE round-trip, and we drop the
+ * row from `tasks` here so the list re-renders without it.
  */
 export type TaskListClientProps = {
   initialTasks: Task[];
@@ -39,10 +41,14 @@ export function TaskListClient({ initialTasks }: TaskListClientProps) {
     setTasks((prev) => [...prev, task]);
   }, []);
 
+  const handleTaskDeleted = React.useCallback((id: string) => {
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+  }, []);
+
   return (
     <div className="flex flex-col gap-4" data-testid="task-list-root">
       <AddTaskForm onTaskAdded={handleTaskAdded} />
-      <TaskList tasks={tasks} />
+      <TaskList tasks={tasks} onDelete={handleTaskDeleted} />
     </div>
   );
 }

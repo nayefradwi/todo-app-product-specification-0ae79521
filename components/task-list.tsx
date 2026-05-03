@@ -14,13 +14,17 @@ import type { Task } from "@/lib/db/schema";
  * keeping this component stateless makes it trivially reusable and easy
  * to snapshot-test. Mutations (add / toggle-complete / delete) are wired
  * up at the client wrapper level and flow back into this component via
- * the `tasks` prop.
+ * the `tasks` prop. The `onDelete` callback is passed straight through
+ * to each row so successful DELETE round-trips can drop the task from
+ * the parent's state.
  */
 export type TaskListProps = {
   tasks: Task[];
+  /** Forwarded to each `<TaskItem>`; called with the deleted task's id. */
+  onDelete?: (id: string) => void;
 };
 
-export function TaskList({ tasks }: TaskListProps) {
+export function TaskList({ tasks, onDelete }: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <div
@@ -35,7 +39,7 @@ export function TaskList({ tasks }: TaskListProps) {
   return (
     <ol className="divide-y rounded-md border bg-card" data-testid="task-list">
       {tasks.map((task) => (
-        <TaskItem key={task.id} task={task} />
+        <TaskItem key={task.id} task={task} onDelete={onDelete} />
       ))}
     </ol>
   );
