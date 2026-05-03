@@ -11,15 +11,18 @@ import type { Task } from "@/lib/db/schema";
 /**
  * TaskItem
  *
- * Renders a single task row: the optimistic-toggle <TaskCheckbox>, the
- * task title (struck-through when completed), and a trailing trash-icon
- * delete button.
+ * Renders a single task row in the task list: the optimistic-toggle
+ * <TaskCheckbox>, the task title (struck-through when completed), and a
+ * trailing trash-icon delete button. The row is laid out as a flex
+ * container so the title fills available space between the fixed-width
+ * checkbox and delete button.
  *
  * The checkbox's optimistic-toggle round-trip with the server is owned
  * entirely by <TaskCheckbox>. We mirror the displayed `completed` value
  * here via its `onCompletedChange` callback so the title's
- * `line-through` styling stays in sync — including after a revert on
- * failure.
+ * `line-through` styling stays in sync with the checkbox — including
+ * after a revert on failure. Persisted state on a page refresh is
+ * sourced from the server-rendered `task.completed` prop.
  *
  * The delete button is intentionally a placeholder for this story — it
  * will be wired up in the dedicated "Delete Task" story.
@@ -41,9 +44,13 @@ export function TaskItem({ task }: TaskItemProps) {
 
   return (
     <li
-      className="flex items-center gap-3 px-4 py-3 text-sm"
+      className={cn(
+        "flex items-center gap-3 px-4 py-3 text-sm transition-opacity",
+        completed && "opacity-70",
+      )}
       data-testid="task-item"
       data-task-id={task.id}
+      data-completed={completed ? "true" : "false"}
     >
       <TaskCheckbox
         taskId={task.id}
@@ -70,7 +77,7 @@ export function TaskItem({ task }: TaskItemProps) {
         size="icon"
         onClick={handleDelete}
         aria-label={`Delete task "${task.title}"`}
-        className="text-muted-foreground hover:text-destructive"
+        className="shrink-0 text-muted-foreground hover:text-destructive"
       >
         <Trash2 aria-hidden="true" />
       </Button>
