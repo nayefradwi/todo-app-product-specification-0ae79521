@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { asc, eq } from "drizzle-orm";
 
-import { TaskList } from "@/components/task-list";
+import { TaskListClient } from "@/components/task-list-client";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schema";
@@ -15,12 +15,19 @@ import { tasks } from "@/lib/db/schema";
  * the user's tasks directly via Drizzle (no internal HTTP roundtrip — the
  * GET /api/tasks route uses the same schema, but calling the DB here is
  * cheaper and avoids needing to forward cookies to ourselves) and passes
- * the resulting list down to the client `<TaskList>` component.
+ * the resulting list down to the `<TaskListClient>` wrapper component.
  *
- * `<TaskList>` owns the in-page task state and renders `<AddTaskForm>`
- * itself so newly created tasks can be appended without a page reload.
- * The toggle-completed and delete interactions on each row are still
- * placeholders — they ship in their own follow-up stories.
+ * `<TaskListClient>` owns the in-page task state and composes
+ * `<AddTaskForm>` and `<TaskList>` together so newly created tasks can be
+ * appended without a page reload. The toggle-completed and delete
+ * interactions on each row are still placeholders — they ship in their
+ * own follow-up stories.
+ *
+ * The session check here is a defense-in-depth guard: the
+ * `(protected)` route group's layout / app-level middleware (Protected
+ * Routes story) is the primary gate, but a server-side redirect here
+ * means we never accidentally render task data without an authenticated
+ * session even if the layout/middleware is misconfigured.
  */
 
 // Disable static rendering — this page is per-user and depends on cookies.
@@ -62,7 +69,7 @@ export default async function TasksHomePage() {
         </p>
       </header>
 
-      <TaskList initialTasks={initialTasks} />
+      <TaskListClient initialTasks={initialTasks} />
     </section>
   );
 }
